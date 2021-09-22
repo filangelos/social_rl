@@ -68,6 +68,91 @@ class BCLoss:
     return parts.LossOutput(loss=loss, aux_data=dict(accuracy=accuracy))
 
 
+class ITDLoss:
+  """A `__call__`-able inverse temporal difference learning loss."""
+
+  def __init__(
+      self,
+      network_fn,
+      *,
+      demonstrator_index: int,
+      gamma: float,
+      l1_loss_coef: float,
+      stop_target_gradients: bool = True,
+  ) -> None:
+    """Construct an inverse temporal difference learning loss object."""
+    self._network_fn = network_fn
+    self._demonstrator_index = demonstrator_index
+    self._gamma = gamma
+    self._l1_loss_coef = l1_loss_coef  # This is unused for now.
+    self._stop_target_gradients = stop_target_gradients
+
+  def __call__(
+      self,
+      params: hk.Params,
+      transition: parts.Transition,
+  ) -> parts.LossOutput:
+    """Return the inverse temporal difference learning loss, evaluated on
+    network's `params` and real `transition`."""
+
+    @jax.vmap
+    def itd_loss_fn(
+        psi_tm1: jnp.ndarray,
+        a_tm1: jnp.ndarray,
+        phi_t: jnp.ndarray,
+        discount_t: jnp.ndarray,
+        psi_t: jnp.ndarray,
+        a_t: jnp.ndarray,
+    ) -> jnp.ndarray:
+      """Return the inverse temporald difference learning loss."""
+      batched_sarsa_loss = jax.vmap(
+          rlax.sarsa, in_axes=(0, None, 0, None, 0, None, None))
+      # Collect the φ(s_tm1, a_tm1).
+      phi_t_a = phi_t[..., a_tm1]
+      loss = batched_sarsa_loss( # [num_cumulants]
+          psi_tm1, a_tm1, phi_t_a, discount_t, psi_t, a_t,
+          self._stop_target_gradients)
+      return jnp.mean(rlax.l2_loss(loss))  # []
+
+    # Parse `transition`.
+    s_tm1 = transition.s_tm1['pixels']
+    a_tm1 = transition.a_tm1
+    r_t = transition.r_t
+    s_t = transition.s_t['pixels']
+    discount_t = transition.discount_t * self._gamma
+    a_t = transition.a_t
+
+    # Calculate the successor features for time-step `t-1`.
+    psi_tm1 = self._network_fn(params, s_tm1).successor_features  # [B, N, C, A]
+    psi_tm1 = psi_tm1[:, self._demonstrator_index]  # [B, C, A]
+
+    # Calculate the successor features and cumulants for time-step `t-1`.
+    network_output_t = self._network_fn(params, s_t)
+    psi_t = network_output_t.successor_features
+    psi_t = psi_t[:, self._demonstrator_index]  # [B, C, A]
+    phi_t = network_output_t.cumulants  # [B, C, A]
+
+    # Calculate and aggregate the loss.
+    loss = itd_loss_fn(psi_tm1, a_tm1, phi_t, discount_t, psi_t, a_t)  # [B]
+    loss = jnp.mean(loss)  # []
+
+    logging_dict = dict(
+        # Model predictions.
+        max_psi_tm1=jnp.max(psi_tm1),
+        min_psi_tm1=jnp.min(psi_tm1),
+        mean_psi_tm1=jnp.mean(psi_tm1),
+        max_psi_t=jnp.max(psi_t),
+        min_psi_t=jnp.min(psi_t),
+        mean_psi_t=jnp.mean(psi_t),
+        max_phi_t=jnp.max(phi_t),
+        min_phi_t=jnp.min(phi_t),
+        mean_phi_t=jnp.mean(phi_t),
+        # Batch info.
+        mean_discount=jnp.mean(discount_t))
+
+    return parts.LossOutput(loss=loss, aux_data=logging_dict)
+
+
 class DQNLoss:
   """A `__call__`able DQN loss for a given agent specification."""
 

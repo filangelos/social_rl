@@ -148,11 +148,11 @@ class BCAgent(parts.Agent):
         step.
       logging_dict: The auxiliary information used for logging purposes.
     """
-    policy_logits = self._network.apply( # [B]
+    policy_logits = self._network.apply( # [B, A]
         params, env_output.observation['pixels'][None])
     policy = distrax.Categorical(logits=policy_logits)
-    greedy_action = policy.mode()
-    sample_action = policy.sample(seed=rng_key)
+    greedy_action = jnp.argmax(policy_logits, axis=-1)  # [B]
+    sample_action = policy.sample(seed=rng_key)  # [B]
     action = jax.lax.select(evaluation, greedy_action, sample_action)[0]  # []
     new_actor_state = actor_state._replace(
         num_unique_steps=actor_state.num_unique_steps + 1)

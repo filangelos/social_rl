@@ -45,6 +45,7 @@ class Transition(NamedTuple):
   r_t: np.ndarray
   s_t: np.ndarray
   discount_t: np.ndarray
+  a_t: Optional[np.ndarray] = None
 
 
 class Rollout(NamedTuple):
@@ -54,12 +55,13 @@ class Rollout(NamedTuple):
 
   def to_transition(self) -> Transition:
     """Return the parsed SARSD tuple, with shape [T-1, ...]."""
-    s_tm1 = tree.map_structure(lambda o: o[:-1], self.env_output.observation)
-    a_tm1 = self.agent_output.action[1:]
-    r_t = self.env_output.reward[1:]
-    s_t = tree.map_structure(lambda o: o[1:], self.env_output.observation)
-    discount_t = self.env_output.discount[1:]
-    return Transition(s_tm1, a_tm1, r_t, s_t, discount_t)
+    s_tm1 = tree.map_structure(lambda o: o[:-2], self.env_output.observation)
+    a_tm1 = self.agent_output.action[1:-1]
+    r_t = self.env_output.reward[1:-1]
+    s_t = tree.map_structure(lambda o: o[1:-1], self.env_output.observation)
+    discount_t = self.env_output.discount[1:-1]
+    a_t = self.agent_output.action[2:]
+    return Transition(s_tm1, a_tm1, r_t, s_t, discount_t, a_t)
 
 
 class LossOutput(NamedTuple):

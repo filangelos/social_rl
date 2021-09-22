@@ -46,7 +46,7 @@ class DQNetwork(hk.Module):
     """Return the action values, conditioned on the `pixels_observation`."""
     embedding = GridWorldConvEncoder()(pixels_observation)
     action_values = LayerNormMLP(
-        output_sizes=(512, 512, self._num_actions),
+        output_sizes=(256, 128, self._num_actions),
         activate_final=False)(embedding)
     return action_values  # [B, A]
 

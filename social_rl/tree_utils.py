@@ -21,6 +21,8 @@ import tree
 
 NestedObject = Any
 
+from social_rl.parts import LossOutput
+
 
 def length(nested_array: NestedObject) -> int:
   """Return the length (i.e., first batch dimension) of `nested_array`."""
@@ -40,3 +42,38 @@ def to_numpy(nested_array: NestedObject) -> NestedObject:
 def stack(list_of_nested_arrays: Sequence[NestedObject]) -> NestedObject:
   """Return a `nested_array` by stacking the `list_of_nested_arrays`."""
   return tree.map_structure(lambda *x: np.stack(x), *list_of_nested_arrays)
+
+
+def merge_loss_outputs(**loss_outputs) -> LossOutput:
+  """Return a merged `LossOutput`.
+
+  Sample usage:
+  >>> from social_rl import parts
+  >>> from social_rl.tree_utils import merge_loss_outputs
+  >>> actor_loss_output = parts.LossOutput(loss=-1.3, aux_data=dict(stddev=0.0))
+  >>> critic_loss_output = parts.LossOutput(
+  ...     loss=2.1, aux_data=dict(q_max=4.0, q_min=2.7))
+  >>> print(merge_loss_output(actor=actor_loss_output, critic=critic_loss_output))
+  >>> # LossOutput(loss=0.8, aux_data={'actor/stddev': 0.0, 'actor/loss': -1.3,
+  ... #     'critic/q_max': 4.0, 'critic/q_min': 2.7, 'critic/loss': 2.1})
+
+  Args:
+    **loss_outputs: Keyword arguments, whose **unique** keys are used as prefix
+      for the `aux_data` property.
+
+  Returns:
+    The merged loss output, whose `loss` property is the sum of the `loss`es of
+    the individual loss outputs and its `aux_data` is prefixed according to the
+    provided keywords.
+  """
+  total_loss = 0.0
+  aux_data = dict()
+  for prefix, loss_output in loss_outputs.items():
+    total_loss += loss_output.loss
+    aux_data.update(
+        {
+            '{}/{}'.format(prefix, key): value
+            for key, value in loss_output.aux_data.items()
+        })
+    aux_data['{}/loss'.format(prefix)] = loss_output.loss
+  return LossOutput(loss=total_loss, aux_data=aux_data)
