@@ -1,0 +1,6 @@
+ipython
+yapf
+pylint
+isort
+docformatter
+jupyter

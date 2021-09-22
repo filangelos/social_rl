@@ -1,0 +1,17 @@
+# Tensor libraries.
+dm-tree
+jax
+chex @ git+https://github.com/deepmind/chex
+dm-haiku @ git+https://github.com/deepmind/dm-haiku
+optax @ git+https://github.com/deepmind/optax
+# RL libraries.
+dm_env
+rlax @ git+https://github.com/deepmind/rlax
+# Config files.
+ml_collections
+# Monitoring.
+wandb
+matplotlib
+pandas
+seaborn
+tqdm
