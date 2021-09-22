@@ -5,8 +5,6 @@
 .vscode
 
 # Hide untested agents.
-social_rl/agents/dqn*
-experiments/*dqn*
 social_rl/agents/itd*
 experiments/*itd*
 social_rl/agents/psiphi*

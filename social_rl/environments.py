@@ -1,4 +1,4 @@
-# Copyright 2021 Angelos Filos. All Rights Reserved.
+# Copyright 2020 Angelos Filos. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -77,6 +77,7 @@ class GridWorld(dm_env.Environment):
     self._state_to_cell = {v: k for k, v in self._cell_to_state.items()}
 
     # Store the current state and miscellaneous.
+    self._num_configs = 10  # Limit the number of PCG envs.
     self._wind_prob = 0.0  # Make it explicit that the environment is deterministic.
     self._rng = np.random.RandomState(seed)
     self._goal_color = goal_color
@@ -87,7 +88,6 @@ class GridWorld(dm_env.Environment):
     self._reset_next_step = True
     self._timeout = 25
     self._episode_len = 0
-    self._rng = np.random.RandomState(seed)
     self._reward_per_step = 0.0
     self._goal_reward = 1.0
 
@@ -204,26 +204,31 @@ class GridWorld(dm_env.Environment):
 
   def _init_random_positions(self) -> None:
     """Place the agent, and the goals randomly on the board."""
+    config_seed = self._rng.choice(self._num_configs)
     self._agent_pos = self._place_randomly(occupied_cells=())
     self._goals_pos = dict()
     self._goals_pos['red'] = self._place_randomly(
-        occupied_cells=(self._agent_pos,))
+        occupied_cells=(self._agent_pos,), seed=config_seed)
     self._goals_pos['green'] = self._place_randomly(
-        occupied_cells=(self._agent_pos, self._goals_pos['red']))
+        occupied_cells=(self._agent_pos, self._goals_pos['red']),
+        seed=config_seed)
     self._goals_pos['blue'] = self._place_randomly(
         occupied_cells=(
-            self._agent_pos, self._goals_pos['red'], self._goals_pos['green']))
+            self._agent_pos, self._goals_pos['red'], self._goals_pos['green']),
+        seed=config_seed)
 
   def _place_randomly(
       self,
       occupied_cells: Sequence[Position],
+      seed: Optional[int] = None,
   ) -> Position:
     """Return a random, unoccupied cell position."""
     found = False
     occupied_states = [
         self._cell_to_state[(cell[0], cell[1])] for cell in occupied_cells
     ]
+    rng = np.random.RandomState(seed)
     while not found:
-      random_state = self._rng.randint(self._num_states)
+      random_state = rng.randint(self._num_states)
       found = random_state not in occupied_states
     return np.array(self._state_to_cell[random_state])

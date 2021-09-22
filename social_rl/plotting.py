@@ -1,4 +1,4 @@
-# Copyright 2021 Angelos Filos. All Rights Reserved.
+# Copyright 2020 Angelos Filos. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,9 +46,9 @@ except:
   }
 
 
-def plot_stats(stats):
+def plot_learner_buffer_loop_stats(stats):
   """Visualise the `stats` returned from
-  `social_rl.loops.run_offline_learner_loop`."""
+  `social_rl.loops.LearnerBufferLoop.run`."""
   figax = list()
   first_key = list(stats.keys())[0]
   stats_keys = stats[first_key]['stats'].keys()
@@ -61,3 +61,24 @@ def plot_stats(stats):
     ax.set(xlabel='Learner Steps', ylabel=stat_key)
     figax.append((fig, ax))
   return figax
+
+
+def plot_agent_environment_loop_stats(stats):
+  """Visualise the `stats` returned from
+  `social_rl.loops.AgentEnvironmentLoop.run`."""
+  import pandas as pd
+  fig, ax = plt.subplots()
+  rolling_window = 50
+  x_axis = pd.Series(stats['episode_metrics']['train']['step'])
+  y_axis = pd.Series(stats['episode_metrics']['train']['stats']['returns'])
+  x_axis = x_axis.rolling(rolling_window).mean()
+  y_axis = y_axis.rolling(rolling_window).mean()
+  ax.plot(x_axis, y_axis, label='train')
+  ax.legend()
+  ax.set(xlabel='Number of Steps', ylabel='Episode Returns', ylim=(-1.05, 1.05))
+  try:
+    from IPython.display import display
+    display(fig)
+    plt.close()
+  except:
+    pass

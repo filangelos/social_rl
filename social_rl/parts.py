@@ -1,4 +1,4 @@
-# Copyright 2021 Angelos Filos. All Rights Reserved.
+# Copyright 2020 Angelos Filos. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -149,17 +149,21 @@ class Agent(abc.ABC):
 class ReplayBuffer(abc.ABC):
   """Interface for a simple replay buffer."""
 
+  def __init__(self, batch_size: int, *args, **kwargs) -> None:
+    """Construct a replay buffer."""
+    self._batch_size = batch_size
+
   @abc.abstractmethod
   def num_samples(self, evaluation: bool = False) -> int:
     """Return the number of available elements."""
 
   @abc.abstractmethod
-  def sample(self, batch_size: int) -> Union[Rollout, Transition]:
-    """Return a batch if elements."""
+  def sample(self) -> Union[Rollout, Transition]:
+    """Return a batch of elements."""
 
-  @abc.abstractmethod
-  def can_sample(self, batch_size: int) -> Transition:
+  def can_sample(self, evaluation: bool = False) -> Transition:
     """Return `True` if there is a sufficient number of transitions available."""
+    return self.num_samples(evaluation) >= self._batch_size
 
   @abc.abstractmethod
   def add(
@@ -168,3 +172,12 @@ class ReplayBuffer(abc.ABC):
       agent_output: Optional[AgentOutput] = None,
   ) -> None:
     """Add single-step interaction to the buffer."""
+
+
+class Loop(abc.ABC):
+  """Interface for `run`-able loops."""
+
+  @abc.abstractmethod
+  def run(self, rng_key: PRNGKey, num_iterations: int, **kwargs) -> Any:
+    """Executes the loop for `num_iterations`, an iteration may refer to, e.g.,
+    steps in the environment, complete episodes, etc."""

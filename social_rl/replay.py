@@ -1,4 +1,4 @@
-# Copyright 2021 Angelos Filos. All Rights Reserved.
+# Copyright 2020 Angelos Filos. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,8 +14,11 @@
 # ==============================================================================
 """Replay buffers and utility functions."""
 
+import collections
+import copy
 import glob
 import os
+import random
 from typing import Optional
 
 import numpy as np
@@ -27,16 +30,67 @@ from social_rl.io_utils import load_rollout_from_disk
 from social_rl.parts import AgentOutput, EnvOutput, ReplayBuffer, Transition
 
 
+class ExperienceBuffer(ReplayBuffer):
+  """Replay ego experience."""
+
+  def __init__(
+      self,
+      batch_size: int,
+      capacity: int,
+      seed: Optional[int] = None,
+  ) -> None:
+    """Construct a minimal replay buffer for onlin RL agents."""
+    super().__init__(batch_size=batch_size)
+    self._capacity = capacity
+    random.seed(seed)
+    self._buffer = collections.deque(maxlen=self._capacity)
+    self._prev_env_output = None
+
+  def num_samples(self, evaluation: bool = False) -> int:
+    """Return the number of available elements."""
+    assert not evaluation
+    return len(self._buffer)
+
+  def add(
+      self,
+      env_output: EnvOutput,
+      agent_output: Optional[AgentOutput] = None,
+  ) -> None:
+    """Append the agent-environment interaction to the buffer."""
+
+    if agent_output is not None:  # Enter this when not in first step.
+      transition = Transition(
+          s_tm1=self._prev_env_output.observation,
+          a_tm1=agent_output.action,
+          r_t=env_output.reward,
+          s_t=env_output.observation,
+          discount_t=env_output.discount)
+      transition = tree.map_structure(copy.deepcopy, transition)
+      self._buffer.append(transition)
+
+    # Cache environment output for next timestep.
+    self._prev_env_output = env_output
+
+  def sample(self, evaluation: bool = False) -> Transition:
+    """Return a batch if transitions."""
+    assert self.can_sample(evaluation)
+
+    unbatched_sample = random.sample(self._buffer, self._batch_size)
+    return tree_utils.stack(unbatched_sample)
+
+
 class DemonstrationsBuffer(ReplayBuffer):
   """Replays experience from near-expert demonstrators."""
 
   def __init__(
       self,
+      batch_size: int,
       data_dir: str,
       train_eval_split: float = 0.9,
       seed: Optional[int] = None,
   ) -> None:
     """Construct a demonstrations replay buffer."""
+    super().__init__(batch_size=batch_size)
     assert 0 <= train_eval_split <= 1.0
     self._data_dir = data_dir
     self._train_eval_split = train_eval_split
@@ -63,8 +117,8 @@ class DemonstrationsBuffer(ReplayBuffer):
     num_demos = tree_utils.length(demos)
     train_indices = self._rng.choice(
         num_demos, size=int(num_demos * self._train_eval_split), replace=False)
-    eval_indices = np.zeros(shape=num_demos, dtype=np.bool)
-    eval_indices[~train_indices] = 1.0
+    eval_indices = np.ones(shape=num_demos, dtype=np.bool)
+    eval_indices[train_indices] = 0.0
     self._demos = dict(
         train=tree_utils.slice(demos, train_indices),
         eval=tree_utils.slice(demos, eval_indices))
@@ -77,19 +131,15 @@ class DemonstrationsBuffer(ReplayBuffer):
     """Return the number of available elements."""
     return self._num_demos['eval' if evaluation else 'train']
 
-  def sample(self, batch_size: int, evaluation: bool = False) -> Transition:
+  def sample(self, evaluation: bool = False) -> Transition:
     """Return a batch if transitions."""
-    assert self.can_sample(batch_size)
+    assert self.can_sample(evaluation)
 
     indices = self._rng.choice(
-        a=self.num_samples(evaluation), size=batch_size, replace=False)
+        a=self.num_samples(evaluation), size=self._batch_size, replace=False)
     return tree.map_structure(
         lambda x: x[indices].copy(),
         self._demos['eval' if evaluation else 'train'])
-
-  def can_sample(self, batch_size: int, evaluation: bool = False) -> Transition:
-    """Return `True` if there is a sufficient number of transitions available."""
-    return self.num_samples(evaluation) >= batch_size
 
   def add(
       self,

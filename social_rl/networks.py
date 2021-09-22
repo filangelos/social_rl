@@ -1,4 +1,4 @@
-# Copyright 2021 Angelos Filos. All Rights Reserved.
+# Copyright 2020 Angelos Filos. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,13 +41,10 @@ class GridWorldConvEncoder(hk.Module):
 
     # Apply convolutions.
     embedding = hk.Conv2D(
-        output_channels=32, kernel_shape=(8, 8), stride=4)(pixels_observation)
+        output_channels=16, kernel_shape=(8, 8), stride=4)(pixels_observation)
     embedding = jax.nn.relu(embedding)
     embedding = hk.Conv2D(
-        output_channels=64, kernel_shape=(4, 4), stride=2)(embedding)
-    embedding = jax.nn.relu(embedding)
-    embedding = hk.Conv2D(
-        output_channels=64, kernel_shape=(3, 3), stride=1)(embedding)
+        output_channels=32, kernel_shape=(4, 4), stride=2)(embedding)
     embedding = jax.nn.relu(embedding)
 
     # Flatten embedding to vector.

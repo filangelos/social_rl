@@ -1,4 +1,4 @@
-# Copyright 2021 Angelos Filos. All Rights Reserved.
+# Copyright 2020 Angelos Filos. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,5 +19,5 @@ from social_rl import loops
 from social_rl import losses
 from social_rl import parts
 from social_rl import plotting
+from social_rl import replay
 from social_rl.environments import GridWorld
-from social_rl.replay import DemonstrationsBuffer
