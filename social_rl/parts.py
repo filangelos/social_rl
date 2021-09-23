@@ -127,7 +127,7 @@ class Agent(abc.ABC):
   def learner_step(
       self,
       params: hk.Params,
-      rollout: Rollout,  # [T, B, ...]
+      *transitions: Transition,  # [B, ...]
       learner_state: State,
       rng_key: PRNGKey,
   ) -> Tuple[hk.Params, State, InfoDict]:
@@ -136,8 +136,8 @@ class Agent(abc.ABC):
 
     Args:
       params: The agent's parameters.
-      rollout: The **batched** rollout used for updating the `params` and
-        `learner_state`, with shape [T, B, ...].
+      transition: The **batched** transition used for updating the `params` and
+        `learner_state`, with shape [B, ...].
       learner_state: The learner's state.
       rng_key: The random number generators key.
 

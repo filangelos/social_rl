@@ -185,7 +185,7 @@ class DQNAgent(parts.Agent):
   def learner_step(
       self,
       params: hk.Params,
-      transition: parts.Transition,  # [B, ...]
+      *transitions: parts.Transition,  # [B, ...]
       learner_state: DQNLearnerState,
       rng_key: parts.PRNGKey,
   ) -> Tuple[hk.Params, DQNLearnerState, parts.InfoDict]:
@@ -205,6 +205,8 @@ class DQNAgent(parts.Agent):
       logging_dict: The auxiliary information used for logging purposes.
     """
     del rng_key
+    assert len(transitions) == 1
+    transition = transitions[0]
 
     new_target_params = rlax.periodic_update(
         params,

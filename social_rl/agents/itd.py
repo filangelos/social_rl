@@ -15,7 +15,7 @@
 """Simple inverse temporal difference learning agent."""
 
 import functools as ft
-from typing import NamedTuple, Optional, Tuple
+from typing import NamedTuple, Optional, Sequence, Tuple
 
 import chex
 import haiku as hk
@@ -52,8 +52,8 @@ def get_config() -> ml_collections.ConfigDict:
   return config
 
 
-# @chex.dataclass(frozen=True)
-class ITDNetworkOutput(NamedTuple):
+@chex.dataclass(frozen=True)
+class ITDNetworkOutput:
   """Container for holding the `ITDNetwork`'s output."""
   cumulants: chex.Array  # [B, num_cumulants, num_actions]
   successor_features: chex.Array  # [B, num_demonstrators, num_cumulants, num_actions]
@@ -225,7 +225,7 @@ class ITDAgent(parts.Agent):
   def learner_step(
       self,
       params: hk.Params,
-      transition: parts.Transition,  # [B, ...]
+      *transitions: parts.Transition,  # [B, ...]
       learner_state: ITDLearnerState,
       rng_key: parts.PRNGKey,
   ) -> Tuple[hk.Params, ITDLearnerState, parts.InfoDict]:
@@ -245,9 +245,10 @@ class ITDAgent(parts.Agent):
       logging_dict: The auxiliary information used for logging purposes.
     """
     del rng_key
+    assert len(transitions) == self._cfg.num_demonstrators
 
     (loss, logging_dict), grads = jax.value_and_grad(
-        self._loss_fn, has_aux=True)(params, transition)
+        self._loss_fn, has_aux=True)(params, transitions)
     updates, new_opt_state = self._optimiser.update(
         grads, learner_state.opt_state)
     logging_dict['global_gradient_norm'] = optax.global_norm(updates)
@@ -263,18 +264,27 @@ class ITDAgent(parts.Agent):
   def _loss_fn(
       self,
       params: hk.Params,
-      transition: parts.Transition,
+      transitions: Sequence[parts.Transition],
   ) -> parts.LossOutput:
     """Return the ITD + BC loss, evaluated on network's `params` and real
     `transition`."""
 
     # Wrap the `self._network` to a `BCLoss`-friendly function.
-    def network_fn(params: hk.Params, s_tm1: jnp.ndarray) -> jnp.ndarray:
+    def network_fn(
+        params: hk.Params,
+        s_tm1: jnp.ndarray,
+        demonstrator_index: int,
+    ) -> jnp.ndarray:
       """Return the policy parameters, conditioned on `s_tm1`."""
-      return self._network.apply(params, s_tm1).policy_params[:, 0]
+      return self._network.apply(params,
+                                 s_tm1).policy_params[:, demonstrator_index]
 
     # Build the loss functions.
-    bc_loss_fn = BCLoss(network_fn=network_fn)
+    bc_loss_fns = {
+        'bc_demo_{}'.format(n):
+        BCLoss(network_fn=lambda p, s: network_fn(p, s, n))
+        for n in range(self._cfg.num_demonstrators)
+    }
     itd_loss_fns = {
         'itd_demo_{}'.format(n): ITDLoss(
             network_fn=self._network.apply,
@@ -284,11 +294,20 @@ class ITDAgent(parts.Agent):
     }
 
     # Apply the loss functions on the network `params` and `transition`.
-    bc_loss_output = bc_loss_fn(params, transition)
-    itd_loss_outputs = jax.tree_map(
-        lambda loss_fn: loss_fn(params, transition), itd_loss_fns)
+    bc_loss_outputs = dict()
+    for (label, bc_loss_fn), transition in zip(
+        bc_loss_fns.items(),
+        transitions,
+    ):
+      bc_loss_outputs[label] = bc_loss_fn(params, transition)
+    itd_loss_outputs = dict()
+    for (label, itd_loss_fn), transition in zip(
+        itd_loss_fns.items(),
+        transitions,
+    ):
+      itd_loss_outputs[label] = itd_loss_fn(params, transition)
     # Merge loss outputs.
     loss_output = tree_utils.merge_loss_outputs(
-        bc=bc_loss_output, **itd_loss_outputs)
+        **bc_loss_outputs, **itd_loss_outputs)
 
     return loss_output

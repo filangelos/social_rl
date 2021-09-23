@@ -14,7 +14,7 @@
 # ==============================================================================
 """Agent-environment interaction loops."""
 
-from typing import Optional, Tuple
+from typing import Optional, Sequence, Tuple
 
 import haiku as hk
 import jax
@@ -114,7 +114,7 @@ class AgentEnvironmentLoop(parts.Loop):
         transition = self._replay_buffer.sample(evaluation=False)
         rng_key, learner_key = jax.random.split(rng_key, num=2)
         params, learner_state, learner_logging_dict = self._agent.learner_step(
-            params, transition, learner_state, learner_key)
+            params, *[transition], learner_state, learner_key)
         stats_learner.append(
             dict(step=step, stats=tree_utils.to_numpy(learner_logging_dict)))
 
@@ -199,12 +199,12 @@ class LearnerBufferLoop(parts.Loop):
 
   def __init__(
       self,
-      replay_buffer: parts.ReplayBuffer,
+      replay_buffers: Sequence[parts.ReplayBuffer],
       agent: parts.Agent,
       name: Optional[str] = None,
   ) -> None:
     """Construct an interaction loop for a `learner`-`replay_buffer` pair."""
-    self._replay_buffer = replay_buffer
+    self._replay_buffers = replay_buffers
     self._agent = agent
     self._name = name
 
@@ -244,22 +244,34 @@ class LearnerBufferLoop(parts.Loop):
     # The `learner`-`replay_buffer` interaction loop.
     for step in tqdm.trange(num_iterations):
       # Training step.
-      train_transition = self._replay_buffer.sample(evaluation=False)
+      train_transitions = [
+          rb.sample(evaluation=False) for rb in self._replay_buffers
+      ]
       rng_key, learner_key = jax.random.split(rng_key, num=2)
       params, learner_state, train_logging_dict = self._agent.learner_step(
-          params, train_transition, learner_state, learner_key)
+          params,
+          *train_transitions,
+          learner_state=learner_state,
+          rng_key=learner_key)
       train_logging_dict = tree_utils.to_numpy(train_logging_dict)
       stats_train.append({'step': step, 'stats': train_logging_dict})
       # Evaluation step.
       if evaluate_every > 0 and step % evaluate_every == 0:
-        eval_transition = self._replay_buffer.sample(evaluation=True)
+        eval_transitions = [
+            rb.sample(evaluation=False) for rb in self._replay_buffers
+        ]
         _, _, eval_logging_dict = self._agent.learner_step(
-            params, eval_transition, learner_state, learner_key)
+            params,
+            *eval_transitions,
+            learner_state=learner_state,
+            rng_key=learner_key)
         eval_logging_dict = tree_utils.to_numpy(eval_logging_dict)
         stats_eval.append({'step': step, 'stats': eval_logging_dict})
 
     # Homogenise the logs.
-    stats_train = tree_utils.stack(stats_train)
-    stats_eval = tree_utils.stack(stats_eval)
+    if len(stats_train) > 0:
+      stats_train = tree_utils.stack(stats_train)
+    if len(stats_eval) > 0:
+      stats_eval = tree_utils.stack(stats_eval)
 
     return params, learner_state, dict(train=stats_train, eval=stats_eval)

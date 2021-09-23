@@ -162,7 +162,7 @@ class BCAgent(parts.Agent):
   def learner_step(
       self,
       params: hk.Params,
-      transition: parts.Transition,  # [B, ...]
+      *transitions: parts.Transition,  # [B, ...]
       learner_state: BCLearnerState,
       rng_key: parts.PRNGKey,
   ) -> Tuple[hk.Params, BCLearnerState, parts.InfoDict]:
@@ -182,6 +182,8 @@ class BCAgent(parts.Agent):
       logging_dict: The auxiliary information used for logging purposes.
     """
     del rng_key
+    assert len(transitions) == 1
+    transition = transitions[0]
 
     (loss, logging_dict), grads = jax.value_and_grad(
         self._loss_fn, has_aux=True)(params, transition)
