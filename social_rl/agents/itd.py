@@ -18,6 +18,7 @@ import functools as ft
 from typing import NamedTuple, Optional, Sequence, Tuple
 
 import chex
+import distrax
 import haiku as hk
 import jax
 import jax.numpy as jnp
@@ -38,6 +39,7 @@ class ITDLearnerState(NamedTuple):
 
 class ITDActorState(NamedTuple):
   """Container for holding the ITD actor's state."""
+  demonstrator_index: int  # Commit to imitating one demonstrator per episode.
   network_state: parts.State
   num_unique_steps: int
 
@@ -92,7 +94,7 @@ class ITDNetwork(hk.Module):
     # Torso network.
     embedding = GridWorldConvEncoder()(pixels_observation)
     embedding = LayerNormMLP(
-        output_sizes=(256, 64), activate_final=True)(embedding)
+        output_sizes=(256, 128), activate_final=True)(embedding)
 
     # Cumulants head.
     cumulants = hk.nets.MLP(
@@ -180,10 +182,12 @@ class ITDAgent(parts.Agent):
 
   def initial_actor_state(self, rng_key: parts.PRNGKey) -> ITDActorState:
     """Return the agent's initial actor state."""
-    del rng_key
+    # Pick a demonstrator **randomly**.
+    demonstrator_index = jax.random.randint(
+        rng_key, shape=(), minval=0, maxval=self._cfg.num_demonstrators)
     network_state = ()
     num_unique_steps = 0
-    return ITDActorState(network_state, num_unique_steps)
+    return ITDActorState(demonstrator_index, network_state, num_unique_steps)
 
   @ft.partial(jax.jit, static_argnums=0)
   def actor_step(
@@ -211,8 +215,9 @@ class ITDAgent(parts.Agent):
         step.
       logging_dict: The auxiliary information used for logging purposes.
     """
-    policy_logits = self._network.apply( # [B, A]
-        params, env_output.observation['pixels'][None])
+    policy_logits = self._network.apply( # [B, num_demonstrators, A]
+        params, env_output.observation['pixels'][None]).policy_params
+    policy_logits = policy_logits[:, actor_state.demonstrator_index]  # [B, A]
     policy = distrax.Categorical(logits=policy_logits)
     greedy_action = jnp.argmax(policy_logits, axis=-1)  # [B]
     sample_action = policy.sample(seed=rng_key)  # [B]

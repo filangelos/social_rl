@@ -162,14 +162,13 @@ class ActorEnvironmentLoop(parts.Loop):
       num_iterations: The number of episodes run.
       params: The agent's parameters.
       actor_state: The actor's initial state. If `None` then the
-        `agent.initial_actor_state` function is used for initialising it.
+        `agent.initial_actor_state` function is used for initialising it at
+        the beginning of **each** episode.
       evaluation: Whether we run the actor in the `evaluation` mode.
     """
 
-    # Maybe initialise agent's components.
-    if actor_state is None:
-      rng_key, actor_key = jax.random.split(rng_key, num=2)
-      actor_state = self._agent.initial_actor_state(actor_key)
+    # Set the initial state of the actor.
+    initial_actor_state = actor_state
 
     # Container for holding the logged objects.
     stats = list()
@@ -179,6 +178,11 @@ class ActorEnvironmentLoop(parts.Loop):
       env_output = self._environment.reset()
       episode_returns = 0.0
       episode_length = 0
+      # Reset the `actor_state` for each episode.
+      actor_state = initial_actor_state
+      if actor_state is None:
+        rng_key, actor_state_key = jax.random.split(rng_key, num=2)
+        actor_state = self._agent.initial_actor_state(actor_state_key)
       while not env_output.last():
         rng_key, actor_key = jax.random.split(rng_key, num=2)
         agent_output, actor_state, _ = self._agent.actor_step(
