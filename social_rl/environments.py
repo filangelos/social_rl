@@ -77,7 +77,7 @@ class GridWorld(dm_env.Environment):
     self._state_to_cell = {v: k for k, v in self._cell_to_state.items()}
 
     # Store the current state and miscellaneous.
-    self._num_configs = 1  # Limit the number of PCG envs.
+    self._num_configs = 10  # Limit the number of PCG envs.
     self._wind_prob = 0.0  # Make it explicit that the environment is deterministic.
     self._rng = np.random.RandomState(seed)
     self._goal_color = goal_color
