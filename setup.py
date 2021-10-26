@@ -14,6 +14,7 @@
 # ==============================================================================
 
 import os
+from typing import List
 
 from setuptools import find_packages
 from setuptools import setup
@@ -24,16 +25,32 @@ here = os.path.abspath(os.path.dirname(__file__))
 with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
   long_description = f.read()
 
-# Get the core dependencies from `requirements.txt`.
-with open(os.path.join(here, "requirements.txt"), encoding="utf-8") as f:
-  requirements = [
-      l.rstrip() for l in f if not (l.isspace() or l.startswith("#"))
-  ]
+# Get the module version.
+with open('social_rl/__init__.py') as fp:
+  version_found = False
+  for line in fp:
+    if line.startswith('__version__'):
+      g = {}
+      exec(line, g)  # pylint: disable=exec-used
+      version = g['__version__']
+      version_found = True
+      break
+  if not version_found:
+    raise ValueError('`__version__` not defined in `social_rl/__init__.py`')
+del version_found
+
+
+def get_requirements(fname: str) -> List[str]:
+  """Return the dependencies a requirements.txt-like file."""
+  with open(os.path.join(here, "requirements", "{}.txt".format(fname)),
+            encoding="utf-8") as f:
+    return [l.rstrip() for l in f if not (l.isspace() or l.startswith("#"))]
+
 
 setup(
     name="social_rl",
-    version="0.0.1",
-    description="PsiPhi-Learning",
+    version=version,
+    description="Social Reinforcement Learning",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/filangelos/social_rl",
@@ -41,9 +58,9 @@ setup(
     author_email="filos.angel@gmail.com",
     license="Apache License, Version 2.0",
     packages=find_packages(),
-    install_requires=requirements,
+    install_requires=get_requirements('core'),
     tests_require=[],
-    extras_require={},
+    extras_require={'dev': get_requirements('dev')},
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Topic :: Software Development :: Build Tools",

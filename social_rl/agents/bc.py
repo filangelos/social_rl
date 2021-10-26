@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Simple behavioural cloning agent."""
+"""A simple behavioural cloning (BC) agent."""
 
 import functools as ft
 from typing import NamedTuple, Optional, Tuple

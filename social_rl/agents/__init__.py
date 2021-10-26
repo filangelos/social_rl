@@ -17,3 +17,4 @@
 from social_rl.agents.bc import BCAgent
 from social_rl.agents.dqn import DQNAgent
 from social_rl.agents.itd import ITDAgent
+from social_rl.agents.psiphi import PsiPhiAgent

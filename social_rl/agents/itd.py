@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Simple inverse temporal difference learning agent."""
+"""A simple inverse temporal difference (ITD)[1] learning agent.
+
+[1] https://arxiv.org/abs/2102.12560.
+"""
 
 import functools as ft
 from typing import NamedTuple, Optional, Sequence, Tuple
@@ -49,7 +52,7 @@ def get_config() -> ml_collections.ConfigDict:
   config = ml_collections.ConfigDict()
   config.learning_rate = 1e-4
   config.num_cumulants = 7
-  config.num_demonstrators = 1
+  config.num_demonstrators = 2
   config.gamma = 0.9
   return config
 
@@ -66,7 +69,7 @@ class ITDNetworkOutput:
 
 
 class ITDNetwork(hk.Module):
-  """A simple behavioural cloning neural network."""
+  """A simple neural network for inverse temporal difference learners."""
 
   def __init__(
       self,
@@ -90,7 +93,7 @@ class ITDNetwork(hk.Module):
     self._num_demonstrators = num_demonstrators
 
   def __call__(self, pixels_observation: jnp.ndarray) -> jnp.ndarray:
-    """Return the policy logits, conditioned on the `pixels_observation`."""
+    """Return the multiple outputs, conditioned on the `pixels_observation`."""
     # Torso network.
     embedding = GridWorldConvEncoder()(pixels_observation)
     embedding = LayerNormMLP(
@@ -100,6 +103,7 @@ class ITDNetwork(hk.Module):
     cumulants = hk.nets.MLP(
         output_sizes=(64, self._num_cumulants * self._num_actions),
         activate_final=False)(embedding)
+    cumulants = jax.nn.tanh(cumulants)
     cumulants = hk.Reshape(
         output_shape=(self._num_cumulants, self._num_actions))(cumulants)
 
@@ -122,6 +126,8 @@ class ITDNetwork(hk.Module):
 
     # Derive the rewards.
     reward = jnp.einsum('nc,bca->bna', preference_vectors, cumulants)
+
+    # Derive the policy logits.
     policy_params = jnp.einsum(
         'nc,bnca->bna', preference_vectors, successor_features)
 
@@ -217,6 +223,8 @@ class ITDAgent(parts.Agent):
     """
     policy_logits = self._network.apply( # [B, num_demonstrators, A]
         params, env_output.observation['pixels'][None]).policy_params
+    # import pdb
+    # pdb.set_trace()
     policy_logits = policy_logits[:, actor_state.demonstrator_index]  # [B, A]
     policy = distrax.Categorical(logits=policy_logits)
     greedy_action = jnp.argmax(policy_logits, axis=-1)  # [B]
@@ -281,13 +289,16 @@ class ITDAgent(parts.Agent):
         demonstrator_index: int,
     ) -> jnp.ndarray:
       """Return the policy parameters, conditioned on `s_tm1`."""
-      return self._network.apply(params,
-                                 s_tm1).policy_params[:, demonstrator_index]
+      policy_logits = self._network.apply(params, s_tm1).policy_params
+      chex.assert_rank(policy_logits, 3)  # [B, N, A]
+      return policy_logits[:, demonstrator_index]  # [B, A]
 
     # Build the loss functions.
+    # HACK(filangelos): `n=n` needs attention
+    # https://stackoverflow.com/questions/47165783/what-does-i-i-mean-when-creating-a-lambda-in-python
     bc_loss_fns = {
         'bc_demo_{}'.format(n):
-        BCLoss(network_fn=lambda p, s: network_fn(p, s, n))
+        BCLoss(network_fn=lambda p, s, n=n: network_fn(p, s, n))
         for n in range(self._cfg.num_demonstrators)
     }
     itd_loss_fns = {

@@ -4,3 +4,4 @@ pylint
 isort
 docformatter
 jupyter
+ipdb

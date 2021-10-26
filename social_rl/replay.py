@@ -19,18 +19,18 @@ import copy
 import glob
 import os
 import random
-from typing import Optional
+from typing import Mapping, Optional, Sequence, Union
 
 import numpy as np
 import tree
 import tqdm
 
+from social_rl import parts
 from social_rl import tree_utils
 from social_rl.io_utils import load_rollout_from_disk
-from social_rl.parts import AgentOutput, EnvOutput, ReplayBuffer, Transition
 
 
-class ExperienceBuffer(ReplayBuffer):
+class ExperienceBuffer(parts.ReplayBuffer):
   """Replay ego experience."""
 
   def __init__(
@@ -53,25 +53,27 @@ class ExperienceBuffer(ReplayBuffer):
 
   def add(
       self,
-      env_output: EnvOutput,
-      agent_output: Optional[AgentOutput] = None,
+      env_output: parts.EnvOutput,
+      agent_output: Optional[parts.AgentOutput] = None,
   ) -> None:
     """Append the agent-environment interaction to the buffer."""
 
     if agent_output is not None:  # Enter this when not in first step.
-      transition = Transition(
+      transition = parts.Transition(
           s_tm1=self._prev_env_output.observation,
           a_tm1=agent_output.action,
           r_t=env_output.reward,
           s_t=env_output.observation,
-          discount_t=env_output.discount)
+          discount_t=env_output.discount,
+          a_t=np.array(-1.0, dtype=np.float32))  # Dummy a_t.
+      transition = tree_utils.to_numpy(transition)
       transition = tree.map_structure(copy.deepcopy, transition)
       self._buffer.append(transition)
 
     # Cache environment output for next timestep.
     self._prev_env_output = env_output
 
-  def sample(self, evaluation: bool = False) -> Transition:
+  def sample(self, evaluation: bool = False) -> parts.Transition:
     """Return a batch if transitions."""
     assert self.can_sample(evaluation)
 
@@ -79,7 +81,7 @@ class ExperienceBuffer(ReplayBuffer):
     return tree_utils.stack(unbatched_sample)
 
 
-class DemonstrationsBuffer(ReplayBuffer):
+class DemonstrationsBuffer(parts.ReplayBuffer):
   """Replays experience from near-expert demonstrators."""
 
   def __init__(
@@ -107,7 +109,7 @@ class DemonstrationsBuffer(ReplayBuffer):
       # Append to the buffer.
       demos.append(demo)
     # Stack lists to batched nested objects.
-    demos: Transition = tree.map_structure(
+    demos: parts.Transition = tree.map_structure(
         lambda *x: np.concatenate(x, axis=0), *demos)
     # De-`None` the `reward` and `discount` of the initial states.
     demos = demos._replace(
@@ -131,7 +133,7 @@ class DemonstrationsBuffer(ReplayBuffer):
     """Return the number of available elements."""
     return self._num_demos['eval' if evaluation else 'train']
 
-  def sample(self, evaluation: bool = False) -> Transition:
+  def sample(self, evaluation: bool = False) -> parts.Transition:
     """Return a batch if transitions."""
     assert self.can_sample(evaluation)
 
@@ -143,10 +145,62 @@ class DemonstrationsBuffer(ReplayBuffer):
 
   def add(
       self,
-      env_output: EnvOutput,
-      agent_output: Optional[AgentOutput] = None,
+      env_output: parts.EnvOutput,
+      agent_output: Optional[parts.AgentOutput] = None,
   ) -> None:
     """Raise not implemented error, since the demonstrations are loaded
     offline."""
     del env_output, agent_output
     raise NotImplementedError(self)
+
+
+class EgoOthersBuffer(parts.ReplayBuffer):
+  """Replays both ego and others' experience."""
+
+  def __init__(
+      self,
+      *,
+      ego_buffer: ExperienceBuffer,
+      others_buffers: Sequence[Union[ExperienceBuffer, DemonstrationsBuffer]],
+  ) -> None:
+    """Construct an experience replay buffer that samples from an `ego` buffer and """
+    assert len(others_buffers) > 0
+    self._ego_buffer = ego_buffer
+    self._others_buffers = others_buffers
+
+  def num_samples(
+      self,
+      evaluation: bool = False) -> Mapping[str, Union[int, Sequence[int]]]:
+    """Return the number of available elements."""
+    return dict(
+        ego_buffer=self._ego_buffer.num_samples(evaluation),
+        others_buffers=[
+            rb.num_samples(evaluation) for rb in self._others_buffers
+        ])
+
+  def sample(
+      self,
+      evaluation: bool = False
+  ) -> Sequence[Union[parts.Rollout, parts.Transition]]:
+    """Return samples from all the buffers."""
+    ego_sample = self._ego_buffer.sample(evaluation)
+    others_samples = tuple(
+        [rb.sample(evaluation) for rb in self._others_buffers])
+    return (ego_sample,) + others_samples
+
+  def can_sample(self, evaluation: bool = False) -> bool:
+    """Return `True` if there is a sufficient number of transitions available."""
+    return all(
+        [
+            rb.can_sample(evaluation)
+            for rb in type(self._others_buffers)([self._ego_buffer]) +
+            self._others_buffers
+        ])
+
+  def add(
+      self,
+      env_output: parts.EnvOutput,
+      agent_output: Optional[parts.AgentOutput] = None,
+  ) -> None:
+    """Append the agent-environment interaction to the ego buffer."""
+    self._ego_buffer.add(env_output, agent_output)

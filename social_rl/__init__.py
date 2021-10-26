@@ -14,6 +14,8 @@
 # ==============================================================================
 """Public API for `social_rl`."""
 
+__version__ = "0.0.1.dev"
+
 from social_rl import agents
 from social_rl import loops
 from social_rl import losses

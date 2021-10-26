@@ -55,12 +55,13 @@ class Rollout(NamedTuple):
 
   def to_transition(self) -> Transition:
     """Return the parsed SARSD tuple, with shape [T-1, ...]."""
-    s_tm1 = tree.map_structure(lambda o: o[:-2], self.env_output.observation)
-    a_tm1 = self.agent_output.action[1:-1]
-    r_t = self.env_output.reward[1:-1]
-    s_t = tree.map_structure(lambda o: o[1:-1], self.env_output.observation)
-    discount_t = self.env_output.discount[1:-1]
-    a_t = self.agent_output.action[2:]
+    s_tm1 = tree.map_structure(lambda o: o[:-1], self.env_output.observation)
+    a_tm1 = self.agent_output.action[1:]
+    r_t = self.env_output.reward[1:]
+    s_t = tree.map_structure(lambda o: o[1:], self.env_output.observation)
+    discount_t = self.env_output.discount[1:]
+    # The last action is not trustworthy.
+    a_t = np.roll(self.agent_output.action, shift=-1)[1:]
     return Transition(s_tm1, a_tm1, r_t, s_t, discount_t, a_t)
 
 
@@ -160,10 +161,10 @@ class ReplayBuffer(abc.ABC):
     """Return the number of available elements."""
 
   @abc.abstractmethod
-  def sample(self) -> Union[Rollout, Transition]:
+  def sample(self, evaluation: bool) -> Union[Rollout, Transition]:
     """Return a batch of elements."""
 
-  def can_sample(self, evaluation: bool = False) -> Transition:
+  def can_sample(self, evaluation: bool = False) -> bool:
     """Return `True` if there is a sufficient number of transitions available."""
     return self.num_samples(evaluation) >= self._batch_size
 

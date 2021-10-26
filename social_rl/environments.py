@@ -77,7 +77,7 @@ class GridWorld(dm_env.Environment):
     self._state_to_cell = {v: k for k, v in self._cell_to_state.items()}
 
     # Store the current state and miscellaneous.
-    self._num_configs = 10  # Limit the number of PCG envs.
+    self._num_configs = 25  # Limit the number of PCG envs.
     self._wind_prob = 0.0  # Make it explicit that the environment is deterministic.
     self._rng = np.random.RandomState(seed)
     self._goal_color = goal_color
@@ -205,7 +205,7 @@ class GridWorld(dm_env.Environment):
   def _init_random_positions(self) -> None:
     """Place the agent, and the goals randomly on the board."""
     config_seed = self._rng.choice(self._num_configs)
-    self._agent_pos = self._place_randomly(occupied_cells=())
+    self._agent_pos = self._place_randomly(occupied_cells=(), seed=config_seed)
     self._goals_pos = dict()
     self._goals_pos['red'] = self._place_randomly(
         occupied_cells=(self._agent_pos,), seed=config_seed)

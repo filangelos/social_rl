@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 # Configure `matplotlib` style.
 try:
   plt.style.use(
-      'https://github.com/filangel/mplstyles/raw/main/matlab.mplstyle')
+      'https://github.com/filangelos/mplstyles/raw/main/matlab.mplstyle')
   COLORS = {
       'black': 'k',
       'white': 'w',

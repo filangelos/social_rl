@@ -24,6 +24,37 @@ import rlax
 from social_rl import parts
 
 
+class RewardLoss:
+  """A `__call__`-able reward grounding loss."""
+
+  def __init__(self, network_fn) -> None:
+    """Construct a reward groundling loss object."""
+    self._network_fn = network_fn
+
+  def __call__(
+      self, params: hk.Params,
+      transition: parts.Transition) -> parts.LossOutput:
+    """Return the mean squared error of the reward prediction to the
+    `transition.r_t`, evaluated on network's `params`."""
+
+    @jax.vmap
+    def mse_loss_fn(
+        pred: jnp.ndarray,  # (A,)
+        target: jnp.ndarray,  # ()
+        action: int,  # ()
+    ) -> jnp.ndarray:
+      """Return the mean squared error loss."""
+      chex.assert_rank([pred, target], [1, 0])
+      return (pred[action] - target)**2
+
+    reward_prediction = self._network_fn(params, transition.s_tm1['pixels'])
+    loss = mse_loss_fn(
+        reward_prediction, transition.r_t, transition.a_tm1)  # [B]
+    loss = jnp.mean(loss)  # []
+
+    return parts.LossOutput(loss=loss, aux_data=dict())
+
+
 class BCLoss:
   """A `__call__`-able behavioural cloning loss."""
 

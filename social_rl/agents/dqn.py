@@ -81,7 +81,7 @@ def get_config() -> ml_collections.ConfigDict:
 
 
 class DQNAgent(parts.Agent):
-  """A simple DQN jyna.Agent."""
+  """A simple DQN agent."""
 
   def __init__(
       self,

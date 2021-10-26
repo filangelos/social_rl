@@ -18,6 +18,7 @@ from typing import Optional, Sequence, Tuple
 
 import haiku as hk
 import jax
+from numpy.lib.function_base import iterable
 import tqdm
 
 from social_rl import parts
@@ -111,10 +112,15 @@ class AgentEnvironmentLoop(parts.Loop):
               learner_state,
               actor_state,
           ):
-        transition = self._replay_buffer.sample(evaluation=False)
+        transitions = self._replay_buffer.sample(evaluation=False)
+        if not isinstance(transitions, tuple):
+          transitions = tuple([transitions])
         rng_key, learner_key = jax.random.split(rng_key, num=2)
         params, learner_state, learner_logging_dict = self._agent.learner_step(
-            params, *[transition], learner_state, learner_key)
+            params,
+            *transitions,
+            learner_state=learner_state,
+            rng_key=learner_key)
         stats_learner.append(
             dict(step=step, stats=tree_utils.to_numpy(learner_logging_dict)))
 
@@ -248,25 +254,19 @@ class LearnerBufferLoop(parts.Loop):
     # The `learner`-`replay_buffer` interaction loop.
     for step in tqdm.trange(num_iterations):
       # Training step.
-      train_transitions = [
-          rb.sample(evaluation=False) for rb in self._replay_buffers
-      ]
       rng_key, learner_key = jax.random.split(rng_key, num=2)
       params, learner_state, train_logging_dict = self._agent.learner_step(
           params,
-          *train_transitions,
+          *[rb.sample(evaluation=False) for rb in self._replay_buffers],
           learner_state=learner_state,
           rng_key=learner_key)
       train_logging_dict = tree_utils.to_numpy(train_logging_dict)
       stats_train.append({'step': step, 'stats': train_logging_dict})
       # Evaluation step.
       if evaluate_every > 0 and step % evaluate_every == 0:
-        eval_transitions = [
-            rb.sample(evaluation=False) for rb in self._replay_buffers
-        ]
         _, _, eval_logging_dict = self._agent.learner_step(
             params,
-            *eval_transitions,
+            *[rb.sample(evaluation=True) for rb in self._replay_buffers],
             learner_state=learner_state,
             rng_key=learner_key)
         eval_logging_dict = tree_utils.to_numpy(eval_logging_dict)
